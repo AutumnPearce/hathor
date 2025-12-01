@@ -12,6 +12,11 @@ setup(
         "pyautogen",
         "openai",
     ],
+    extras_require={
+        "dev": [
+            "pytest>=7.0",
+        ],
+    }
     python_requires=">=3.9",  
     author="Autumn Pearce, Yevhen Kylivnyk"
     project_urls={
