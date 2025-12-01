@@ -16,9 +16,9 @@ setup(
         "dev": [
             "pytest>=7.0",
         ],
-    }
+    },
     python_requires=">=3.9",  
-    author="Autumn Pearce, Yevhen Kylivnyk"
+    author="Autumn Pearce, Yevhen Kylivnyk",
     project_urls={
         "Bug Reports": "https://github.com/AutumnPearce/hathor/issues",
         "Source": "https://github.com/AutumnPearce/hathor",
