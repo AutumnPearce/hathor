@@ -4,4 +4,5 @@ __author__ = "Autumn Pearce, Yevhen Kylivnyk"
 
 
 from .hathor import Hathor
-__all__ = ["Hathor"]
+from .agents import BrainstormerAgent
+__all__ = ["Hathor","BrainstormerAgent"]
