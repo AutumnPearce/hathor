@@ -64,13 +64,15 @@ class Hathor:
                              to make more relevant hypotheses. Please create 20 hypotheses. 
 
                              Prompt: {self.prompt}
+                             
+                             If given feedback, please take it into account and alter your hypotheses appropriately.
                           """
         return BrainstormerAgent(name="brainstormer", system_message=system_message, llm_config=self.llm_config)
     
     def _create_critic(self):
         return autogen.AssistantAgent(
             name="Critic",
-            system_message="""You review python script solutions. Check for errors and suggest improvements. You have extensive python knowledge, so please keep an eye out for python errors. """,
+            system_message="""You review galaxy formation hypotheses. Please review the hypotheses given to you, and provide feedback on them.""",
             llm_config=self.llm_config,
         )
 
