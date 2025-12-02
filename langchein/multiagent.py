@@ -192,6 +192,8 @@ def save_answer_to_file(answer: str, file_path: str, title: str = None) -> None:
         f.write("="*70 + "\n\n")
         f.write(answer)
         f.write("\n\n" + "="*70 + "\n")
+
+
 # ============================================
 # 5. AGENT RUNNERS
 # ============================================
@@ -224,10 +226,13 @@ def run_critic(plan: str) -> str:
 
 def run_coder(instructions: str) -> str:
     """Generate code based on instructions"""
+    instructions += "\n\nIMPORTANT: Use the make_image() function from the reference codes. "
+    instructions += "DO NOT manually calculate pixel positions. The make_image() function handles "
+    instructions += "hierarchical AMR binning correctly. Pass positions, levels, features, dx, "
+    instructions += "and parameters (view_dir='z', npix=512, lmin=12, lmax=18, redshift=0.5, boxsize=20.0)."
     formatted = coder_prompt.format_messages(instructions=instructions)
     ai = argonne_llm(formatted, model=CODER_MODEL)
     return code_extractor_tool.invoke(ai.content)
-
 
 
 # ============================================
@@ -301,9 +306,11 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     if refinement_iteration >= max_refinement_iterations:
         print(f"\n⚠️ Maximum refinement iterations ({max_refinement_iterations}) reached. Using last plan.")
         improved_plan = plan
+    
     # Save final plan to file
     save_answer_to_file(improved_plan, "./outputs/Ideas/final_plan.txt", title="Final Detailed Plan")
     print("\n💾 Saved final plan → ./outputs/Ideas/final_plan.txt")
+    
     # 3) Coder Agent - Generate code from the plan
     print("\n" + "="*50)
     print("STEP 3: CODER AGENT")
@@ -313,6 +320,7 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     coder_instructions = (
         f"{Code_developer_prompt}\n\n"
         f"Plan to implement:\n{improved_plan}\n\n"
+        f"if you use functions read_megatron_cutout() write it in the code, dont take just import it elsewhere.\n\n"
         f"save the final plot as '/Users/yk2047/Documents/GitHub/hathor/langchein/outputs/figs/output_plot.png'."
     )
     
@@ -353,6 +361,7 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
             break
 
         print("\n⚠️ ERROR detected → sending to coder for debugging...\n")
+        print("Error Output:\n", result["output"])
         
         # Ask coder to fix the error
         fix_instructions = (
@@ -374,6 +383,7 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
         f.write(code)
 
     print("\n💾 Saved final code → ./outputs/executed_codes/plot.py\n")
+
 
 # ============================================
 # 7. RUN
@@ -421,7 +431,7 @@ I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored 
 at path: "/Users/yk2047/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
-features for each gas cell.
+features for each gas cells.
 
 Create a Python code to accomplish the task based on the plan provided. The image should have a 
 resolution of 512x512 pixels and cover a box size of 20 Mpc at redshift z=0.5. The levels range 
