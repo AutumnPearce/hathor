@@ -38,8 +38,9 @@ htmlcov/
 .coverage
 .pytest_cache/
 
-# datasets
+# datasets and examples
 dataset_examples/
+ex_code/
 
 # plots 
 langchein/outputs/

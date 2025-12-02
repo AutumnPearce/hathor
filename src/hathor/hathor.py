@@ -1,9 +1,10 @@
 import autogen
 from .agents import BrainstormerAgent
-
+import arxiv
 
 TEST_DATA_PATH = "../../test_data"
 EX_CODE_PATH = "../../ex_code"
+PAPERS_PER_QUERY = 10
 
 class Hathor:
     def __init__(self, config_list=None, prompt=None, data_path=TEST_DATA_PATH, ex_code_path=EX_CODE_PATH, interactive=False, literature=None):
@@ -60,19 +61,39 @@ class Hathor:
     def _create_brainstormer(self):
         system_message = f"""
                              You are an expert in galaxy formation. You must scan through recent literature in order to create hypotheses about galaxy formation
-                             that can be investigated by creating plots of RAMSES simulation data. If there is an additional promp given below, you must use it in order\
-                             to make more relevant hypotheses. Please create 20 hypotheses. 
+                             that can be investigated by creating plots from RAMSES simulation data. If there is an additional promp given below, you must use it in order\
+                             to create more relevant hypotheses. Please create 20 hypotheses. 
 
                              Prompt: {self.prompt}
                              
                              If given feedback, please take it into account and alter your hypotheses appropriately.
                           """
-        return BrainstormerAgent(name="brainstormer", system_message=system_message, llm_config=self.llm_config)
+        
+        def search_arxiv(query):
+            search = arxiv.Search(
+                query=query,
+                max_results = PAPERS_PER_QUERY,
+                sort_by=arxiv.SortCriterion.SubmittedDate
+            )
+            
+            papers = []
+            for result in search.results():
+                papers.append({
+                    'title': result.title,
+                    'authors': ', '.join([a.name for a in result.authors[:3]]),
+                    'year': result.published.year,
+                    'abstract': result.summary,
+                    'arxiv_id': result.entry_id.split('/')[-1],
+                    'pdf_url': result.pdf_url
+                })
+        return BrainstormerAgent(name="Brainstormer", system_message=system_message, llm_config=self.llm_config)
     
     def _create_critic(self):
         return autogen.AssistantAgent(
             name="Critic",
-            system_message="""You review galaxy formation hypotheses. Please review the hypotheses given to you, and provide feedback on them.""",
+            system_message= """
+                            You are an expert in galaxy formation simulations. Please review the galaxy formation hypotheses given to you, and provide feedback on them. 
+                            """,
             llm_config=self.llm_config,
         )
 
