@@ -41,5 +41,7 @@ htmlcov/
 # datasets
 dataset_examples/
 
-# outputs 
-langchein/outputs/
+# plots 
+langchein/figs/
+
+inference_auth_token.py
