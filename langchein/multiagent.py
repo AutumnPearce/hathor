@@ -182,7 +182,16 @@ def read_codes_from_folder(folder_path: str) -> str:
                 code_collection += read_code_from_file(os.path.join(folder_path, file_path)) + "\n\n"
     return code_collection
 
-
+def save_answer_to_file(answer: str, file_path: str, title: str = None) -> None:
+    """Utility function to save answer to a local file."""
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "w", encoding='utf-8') as f:
+        f.write("="*70 + "\n")
+        if title:
+            f.write(f"{title}\n")
+        f.write("="*70 + "\n\n")
+        f.write(answer)
+        f.write("\n\n" + "="*70 + "\n")
 # ============================================
 # 5. AGENT RUNNERS
 # ============================================
@@ -215,23 +224,11 @@ def run_critic(plan: str) -> str:
 
 def run_coder(instructions: str) -> str:
     """Generate code based on instructions"""
-    instructions += "\nIMPORTANT: Use the make_image() function from the reference codes. "
-    instructions += "DO NOT manually calculate pixel positions. The make_image() function handles "
-    instructions += "hierarchical AMR binning correctly. Pass positions, levels, features (ne), dx, "
-    instructions += "and parameters (view_dir='z', npix=512, lmin=12, lmax=18, redshift=0.5, boxsize=20.0). "
-    instructions += "Save picture as './figs/output_plot.png'."
     formatted = coder_prompt.format_messages(instructions=instructions)
     ai = argonne_llm(formatted, model=CODER_MODEL)
     return code_extractor_tool.invoke(ai.content)
-def save_response_to_file(response: str, file_path: str, header: str) -> None:
-    """Utility function to save LLM response to a file with a header."""
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "w", encoding='utf-8') as f:
-        f.write("="*70 + "\n")
-        f.write(header + "\n")
-        f.write("="*70 + "\n\n")
-        f.write(response)
-        f.write("\n\n" + "="*70 + "\n")
+
+
 
 # ============================================
 # 6. MAIN MULTI-AGENT PIPELINE
@@ -247,10 +244,11 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     
     literature_review = run_literature_review(Literature_prompt)
     print("Literature Review & 5 Ideas:\n", literature_review)
-    #  -- Save literature review to file with nice formatting
-    os.makedirs("./Ideas", exist_ok=True)
-    save_response_to_file(literature_review, "./Ideas/literature_review.txt", "LITERATURE REVIEW & 5 IDEAS")
-    print("\n💾 Saved literature review → ./Ideas/literature_review.txt")    
+    
+    # Save literature review to file with nice formatting
+    save_answer_to_file(literature_review, "./outputs/Ideas/literature_review.txt", title="Literature Review & 5 Ideas")
+    print("\n💾 Saved literature review → ./outputs/Ideas/literature_review.txt")
+
     # 1) Reasoner Agent - Choose 1 idea and make detailed plan
     print("\n" + "="*50)
     print("STEP 1: REASONING AGENT")
@@ -262,25 +260,50 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     plan = run_reasoner(Idea_choose_prompt, literature_review, previous_codes)
     print("Selected Idea & Detailed Plan:\n", plan)
 
-    # 2) Critic Agent - Review and improve the plan
-    print("\n" + "="*50)
-    print("STEP 2: CRITIC AGENT")
-    print("="*50 + "\n")
+    # 2) Reasoner-Critic Loop - Iterate until plan is approved
+    max_refinement_iterations = 3
+    refinement_iteration = 0
     
-    critique = run_critic(plan)
-    print("Critique:\n", critique)
-
-    # Use improved plan if critic made changes, otherwise use original
-    improved_plan = plan if "plan ok" in critique.lower() else critique
-    save_response_to_file(critique, "./Ideas/critique.txt", "CRITIQUE")
-    with open("./Ideas/idea_todo.txt", "w", encoding='utf-8') as f:
-        f.write("="*70 + "\n")
-        f.write("Idea for checking plan\n")
-        f.write("="*70 + "\n\n")
-        f.write(improved_plan)
-        f.write("\n\n" + "="*70 + "\n")
-    print("\n💾 Saved literature review → ./Ideas/idea_todo.txt")
-
+    while refinement_iteration < max_refinement_iterations:
+        print("\n" + "="*50)
+        print(f"STEP 2: CRITIC AGENT (Refinement {refinement_iteration + 1})")
+        print("="*50 + "\n")
+        
+        critique = run_critic(plan)
+        # print("Critique:\n", critique)
+        
+        # Check if critic approved the plan
+        if "plan ok" in critique.lower():
+            print("\n✅ Critic approved the plan!")
+            improved_plan = plan
+            break
+    
+        # If not approved, send back to reasoner for refinement
+        print("\n🔄 Plan needs refinement, sending back to Reasoner...\n")
+        
+        print("\n" + "="*50)
+        print(f"STEP 1 (cont): REASONING AGENT - Refinement {refinement_iteration + 1}")
+        print("="*50 + "\n")
+        
+        # Create refinement task with critic feedback
+        refinement_task = (
+            # f"{Idea_choose_prompt}\n\n"
+            f"Previous plan:\n{plan}\n\n"
+            f"Critic feedback:\n{critique}\n\n"
+            f"Please refine the plan based on the critic's feedback."
+        )
+        
+        plan = run_reasoner(refinement_task, literature_review, previous_codes)
+        print("Refined Plan:\n", plan)
+        
+        refinement_iteration += 1
+    
+    if refinement_iteration >= max_refinement_iterations:
+        print(f"\n⚠️ Maximum refinement iterations ({max_refinement_iterations}) reached. Using last plan.")
+        improved_plan = plan
+    # Save final plan to file
+    save_answer_to_file(improved_plan, "./outputs/Ideas/final_plan.txt", title="Final Detailed Plan")
+    print("\n💾 Saved final plan → ./outputs/Ideas/final_plan.txt")
     # 3) Coder Agent - Generate code from the plan
     print("\n" + "="*50)
     print("STEP 3: CODER AGENT")
@@ -290,6 +313,7 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     coder_instructions = (
         f"{Code_developer_prompt}\n\n"
         f"Plan to implement:\n{improved_plan}\n\n"
+        f"save the final plot as '/Users/yk2047/Documents/GitHub/hathor/langchein/outputs/figs/output_plot.png'."
     )
     
     if previous_codes:
@@ -322,7 +346,7 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
 
         # Try to execute the code
         result = run_code.invoke(code)
-        print(result["output"])
+        # print(result["output"])
 
         if result["success"]:
             print("\n🎉 SUCCESS: Code executed successfully!")
@@ -345,12 +369,11 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
         print(f"\n❌ Maximum iterations ({max_iterations}) reached. Saving last version anyway...")
 
     # Save final code
-    os.makedirs("./executed_codes", exist_ok=True)
-    with open("./executed_codes/plot.py", "w") as f:
+    os.makedirs("./outputs/executed_codes", exist_ok=True)
+    with open("./outputs/executed_codes/plot.py", "w") as f:
         f.write(code)
 
-    print("\n💾 Saved final code → ./executed_codes/plot.py\n")
-
+    print("\n💾 Saved final code → ./outputs/executed_codes/plot.py\n")
 
 # ============================================
 # 7. RUN
@@ -395,7 +418,7 @@ say 'Plan OK'.
 
     Code_developer_prompt = """
 I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file 
-at path: "~/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
+at path: "/Users/yk2047/Documents/GitHub/hathor/langchein/dataset_examples/halo_3517_gas.bin"
 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
 features for each gas cell.

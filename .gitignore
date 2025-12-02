@@ -41,5 +41,5 @@ htmlcov/
 # datasets
 dataset_examples/
 
-# plots 
-langchein/figs/
+# outputs 
+langchein/outputs/
