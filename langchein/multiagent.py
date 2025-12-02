@@ -418,7 +418,7 @@ say 'Plan OK'.
 
     Code_developer_prompt = """
 I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file 
-at path: "/Users/yk2047/Documents/GitHub/hathor/langchein/dataset_examples/halo_3517_gas.bin"
+at path: "/Users/yk2047/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
 features for each gas cell.
