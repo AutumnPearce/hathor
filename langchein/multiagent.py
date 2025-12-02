@@ -215,10 +215,23 @@ def run_critic(plan: str) -> str:
 
 def run_coder(instructions: str) -> str:
     """Generate code based on instructions"""
+    instructions += "\nIMPORTANT: Use the make_image() function from the reference codes. "
+    instructions += "DO NOT manually calculate pixel positions. The make_image() function handles "
+    instructions += "hierarchical AMR binning correctly. Pass positions, levels, features (ne), dx, "
+    instructions += "and parameters (view_dir='z', npix=512, lmin=12, lmax=18, redshift=0.5, boxsize=20.0). "
+    instructions += "Save picture as './figs/output_plot.png'."
     formatted = coder_prompt.format_messages(instructions=instructions)
     ai = argonne_llm(formatted, model=CODER_MODEL)
     return code_extractor_tool.invoke(ai.content)
-
+def save_response_to_file(response: str, file_path: str, header: str) -> None:
+    """Utility function to save LLM response to a file with a header."""
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "w", encoding='utf-8') as f:
+        f.write("="*70 + "\n")
+        f.write(header + "\n")
+        f.write("="*70 + "\n\n")
+        f.write(response)
+        f.write("\n\n" + "="*70 + "\n")
 
 # ============================================
 # 6. MAIN MULTI-AGENT PIPELINE
@@ -234,7 +247,10 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
     
     literature_review = run_literature_review(Literature_prompt)
     print("Literature Review & 5 Ideas:\n", literature_review)
-
+    #  -- Save literature review to file with nice formatting
+    os.makedirs("./Ideas", exist_ok=True)
+    save_response_to_file(literature_review, "./Ideas/literature_review.txt", "LITERATURE REVIEW & 5 IDEAS")
+    print("\n💾 Saved literature review → ./Ideas/literature_review.txt")    
     # 1) Reasoner Agent - Choose 1 idea and make detailed plan
     print("\n" + "="*50)
     print("STEP 1: REASONING AGENT")
@@ -256,6 +272,14 @@ def multi_agent(Literature_prompt: str, Idea_choose_prompt: str,
 
     # Use improved plan if critic made changes, otherwise use original
     improved_plan = plan if "plan ok" in critique.lower() else critique
+    save_response_to_file(critique, "./Ideas/critique.txt", "CRITIQUE")
+    with open("./Ideas/idea_todo.txt", "w", encoding='utf-8') as f:
+        f.write("="*70 + "\n")
+        f.write("Idea for checking plan\n")
+        f.write("="*70 + "\n\n")
+        f.write(improved_plan)
+        f.write("\n\n" + "="*70 + "\n")
+    print("\n💾 Saved literature review → ./Ideas/idea_todo.txt")
 
     # 3) Coder Agent - Generate code from the plan
     print("\n" + "="*50)
@@ -371,7 +395,7 @@ say 'Plan OK'.
 
     Code_developer_prompt = """
 I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file 
-at path: "../../dataset_examples/halo_3517_gas.bin"
+at path: "~/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
 features for each gas cell.

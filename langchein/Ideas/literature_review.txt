@@ -1,0 +1,172 @@
+======================================================================
+LITERATURE REVIEW & 5 IDEAS
+======================================================================
+
+Below is a short literature‑review style summary of the most‑commonly explored, physically‑motivated scalar fields that have proven useful in halo‑/cluster‑scale analyses of cosmological hydrodynamic simulations (e.g., Illustris‑TNG, EAGLE, SIMBA, Magneticum, and the Megatron “zoom‑in” runs).  For each field I also outline a concrete way to turn the 3‑D cell data (x, y, z, dx, ne, …) into a 2‑D image projected along the **z‑axis**.  The goal is to give *simple* quantities that can be computed with a single pass over the binary file and visualised with a standard library such as **Matplotlib**, **yt**, or **h5py/NumPy**.  The five ideas are deliberately distinct so that together they probe density, thermodynamics, chemistry, dynamics, and sub‑grid physics of the intracluster medium (ICM).
+
+---
+
+## 1. **Emission‑Weighted X‑ray Surface Brightness (0.5–2 keV)**  
+
+### Why it is interesting  
+- X‑ray surface brightness is the most direct observable for massive clusters (e.g., Böhringer et al. 2013; Mantz et al. 2016).  
+- Its radial profile and azimuthal sub‑structure reveal cooling cores, merger‑induced shocks, and AGN‑driven bubbles.  
+- Emission‑weighting naturally highlights dense, hot gas, suppressing noise from low‑density background.
+
+### How to compute from the cut‑out  
+1. Approximate the spectrally‑integrated emissivity for a fully ionised plasma with primordial abundances as  
+
+\[
+\epsilon_{\rm X} \;=\; \Lambda(T,Z) \, n_{\rm e} \, n_{\rm H},
+\]
+
+where \( \Lambda(T,Z) \) is the cooling function integrated over the 0.5–2 keV band (public tables are available in the **CLOUDY** or **APEC** libraries).  
+2. For each cell  
+   - infer the hydrogen number density \(n_{\rm H}=n_{\rm e}/1.2\) (assuming fully ionised plasma with \(X = 0.76\)).  
+   - compute \(T\) from the internal energy or pressure if those fields are present; otherwise you may use the *entropy* field (if stored) \(K = T / n_{\rm e}^{2/3}\) and solve for \(T\).  
+   - look up \(\Lambda(T,Z)\) (you can adopt a metallicity of \(Z=0.3Z_{\odot}\) as a first approximation).  
+   - evaluate \(\epsilon_{\rm X}\).  
+3. Project: add \(\epsilon_{\rm X}\times \Delta z\) to a 2‑D grid (pixel size ≈ the mean cell size in the projection plane). This is equivalent to a **line‑of‑sight integration** of the X‑ray emissivity, yielding a mock surface‑brightness map.  
+
+### Expected science payoff  
+- Identify a cool core (central bright peak) vs. non‑cool‑core morphology.  
+- Measure the projected ellipticity or presence of surface‑brightness discontinuities (cold fronts, shock edges).  
+
+> **Key references** – Govoni & Molendi 2004 (review of X‑ray imaging); Rasia et al. 2012 (synthetic X‑ray maps from simulations); Martizzi et al. 2019 (X‑ray mock images of Illustris‑TNG clusters).
+
+---
+
+## 2. **Mass‑Weighted Temperature Map**  
+
+### Why it is interesting  
+- The ICM temperature traces the depth of the gravitational potential and the recent dynamical state (e.g., mergers raise the temperature locally).  
+- Temperature fluctuations correlate with turbulence, sloshing, and AGN heating (see see Zhuravleva et al. 2014).  
+
+### How to compute  
+1. Derive the gas temperature \(T\) for each cell as in the X‑ray case (use internal energy `u` or `P/ρ`).  
+2. Compute a *mass weight* for each cell: \(w = \rho_{\rm gas} \, \Delta V = \mu m_{\rm p}\, n_{\rm e} \, \Delta V\) where \(\Delta V = dx^{3}\) (or the actual cell volume if anisotropic).  
+3. Project:  
+
+\[
+T_{\rm proj}(x,y) = \frac{\sum_{\rm LOS} T_i \, w_i}{\sum_{\rm LOS} w_i}.
+\]
+
+The denominator ensures a true mass‑weighted average, avoiding bias toward low‑density hot gas.  
+
+### Expected science payoff  
+- Locate hot “bullet‑like” features that signal recent sub‑cluster infall.  
+- Compare the temperature gradient to the X‑ray surface brightness to infer hydrostatic equilibrium offsets.  
+
+> **Key references** – Nagai et al. 2007 (temperature bias in hydrostatic mass estimates); Vikhlinin et al. 2006 (temperature profiles of observed clusters).
+
+---
+
+## 3. **Projected Turbulent Mach Number (or Velocity‑Dispersion Map)**  
+
+### Why it is interesting  
+- Turbulent pressure can contribute ≳10 % of the total pressure support in massive clusters (e.g., Lau et al. 2009; Hitomi Collaboration 2016).  
+- Spatial variations in Mach number reveal merger‑driven turbulence, sloshing, and AGN‑inflated cavities.  
+
+### How to compute (using only the stored velocity field, which is typical for Megatron cut‑outs)  
+1. For each cell retrieve the **three‑component velocity** \(\mathbf{v}_i = (v_x, v_y, v_z)\).  
+2. Subtract the **bulk halo velocity** (e.g., mean velocity of all cells within \(R_{200}\) or the centre‑of‑mass velocity) to obtain the residual \(\delta \mathbf{v}_i\).  
+3. Estimate the **local sound speed**  
+
+\[
+c_{\rm s,i} = \sqrt{\gamma \frac{k_{\mathrm{B}} T_i}{\mu m_{\rm p}}},
+\]
+
+with \(\gamma = 5/3\).  
+4. Compute the *Mach number* for each cell: \( \mathcal{M}_i = |\delta\mathbf{v}_i|/c_{\rm s,i}\).  
+5. Project along the LOS using a mass‑weight (or density‑weight) average analogous to the temperature map:  
+
+\[
+\mathcal{M}_{\rm proj}(x,y)=\frac{\sum \mathcal{M}_i\, w_i}{\sum w_i}.
+\]
+
+### Expected science payoff  
+- Identify high‑Mach regions that correspond to shock fronts.  
+- Quantify the spatial distribution of turbulent support, which can be compared to future X‑ray micro‑calorimeter measurements (XRISM, Athena).  
+
+> **Key references** – Zhuravleva et al. 2014 (turbulent heating); Gaspari et al. 2014 (AGN‑driven turbulence in simulations).
+
+---
+
+## 4. **Metallicity‑Weighted Emission‑Line Surface Brightness (e.g., Fe XXV at 6.7 keV)**  
+
+### Why it is interesting  
+- Heavy‑element line emission (Fe K, Si XIII, O VIII) is a direct probe of the enrichment history, metal transport by AGN outflows, and ram‑pressure stripping.  
+- Radial metallicity gradients diagnose the balance between early‑epoch enrichment (steep central peaks) and late mixing (flatter profiles).  
+
+### How to compute  
+1. Assume the simulation stores a **metallicity** field \(Z\) (or separate elemental abundances).  
+2. Use an optically thin line emissivity table \(\Lambda_{\rm line}(T,Z)\) (publicly available from **ATOMDB/APEC**). For Fe XXV, the line emissivity peaks around \(T\sim 5\times10^{7}\,\rm K\).  
+3. Compute the line emissivity per cell  
+
+\[
+\epsilon_{\rm Fe} = \Lambda_{\rm Fe}(T_i, Z_i) \, n_{\rm e,i} \, n_{\rm H,i}.
+\]
+
+4. Project as in the X‑ray broadband case, but **no additional weighting** is required beyond the line emissivity itself.  
+
+### Expected science payoff  
+- Visualise metal‑rich “bubbles” or filaments that trace AGN jet activity.  
+- Compare the projected metallicity distribution to observations from **XMM‑Newton** or **Chandra** (e.g., Werner et al. 2013).  
+
+> **Key references** – Simionescu et al. 2009 (metallicity maps of Perseus); Rasia et al. 2015 (synthetic metal line maps from simulations).
+
+---
+
+## 5. **Entropy (K = T n_e^{-2/3}) or “Cooling‑Time” Map**  
+
+### Why it is interesting  
+- Entropy is a *Lagrangian* thermodynamic invariant for adiabatic processes, making it the preferred variable for studying heating/cooling balance (Voit 2005).  
+- Low‑entropy cores (K ≲ 30 keV cm²) correspond to classic cool‑core clusters, whereas high‑entropy cores indicate merger disruption or strong AGN heating.  
+
+### How to compute  
+1. For each cell calculate  
+
+\[
+K_i = \frac{T_i}{n_{\rm e,i}^{2/3}} \quad [{\rm keV\,cm}^2].
+\]
+
+2. Optionally compute the **radiative cooling time**  
+
+\[
+t_{\rm cool,i} = \frac{1.5\, n_{\rm tot,i} k_{\rm B} T_i}{n_{\rm e,i} n_{\rm H,i} \Lambda(T_i,Z_i)},
+\]
+
+where \(n_{\rm tot}=n_{\rm e}+n_{\rm H}+n_{\rm He}\).  
+3. Project using a **density‑weight** average (since entropy is a per‑particle quantity, a density weighting preserves the physical meaning):  
+
+\[
+K_{\rm proj}(x,y) = \frac{\sum K_i \, n_{\rm e,i}\, \Delta z}{\sum n_{\rm e,i}\, \Delta z},
+\]
+or analogously for \(t_{\rm cool}\).  
+
+### Expected science payoff  
+- Quickly discriminate between cool‑core and non‑cool‑core morphology.  
+- Spot entropy “plateaus” that often line up with AGN‑inflated cavities, hinting at mechanical heating.  
+
+> **Key references** – Pratt et al. 2010 (entropy profiles of observed clusters); McCarthy et al. 2008 (entropy injection by AGN in simulations).
+
+---
+
+## Practical Implementation Tips (common to all five)
+
+| Step | Detail |
+|------|--------|
+| **File reading** | Megatron cut‑outs are usually a binary *struct* with a header specifying the number of cells (`N`).  Use `np.fromfile` with an appropriate dtype (e.g., `np.dtype([('x',f8),('y',f8),('z',f8),('dx',f8),('ne',f8),('T',f8),('Z',f8),('vx',f8),...])`). |
+| **Domain selection** | Restrict to a cubic region centred on the halo (e.g., 2 × R₍₂₀₀₎) to avoid unnecessary memory use. |
+| **Grid definition** | Choose a 2‑D pixel resolution comparable to the *median* cell size projected on the xy‑plane (e.g., 1024 × 1024 for a ~2 Mpc box).  Use `np.histogram2d` with `weights = emissivity * dz` for the projection. |
+| **Boundary handling** | Periodic boundaries are *not* needed for a cut‑out; simply ignore cells whose LOS coordinate lies outside the selected slab. |
+| **Speed‑up** | The projection can be vectorised: compute all scalar fields (`T`, `K`, `Mach`, etc.) in bulk, then call `np.add.at` or `scipy.sparse.csr_matrix` to accumulate onto the 2‑D grid. |
+| **Visualization** | Use `plt.imshow` with a logarithmic colour map (`norm=LogNorm`) for quantities that span many decades (surface brightness, density).  Overlay contours of the other fields to highlight correlations (e.g., entropy contours over X‑ray surface brightness). |
+| **Verification** | Compare the projected radial profiles (e.g., surface‑brightness or temperature) against analytic β‑models or observed stacked profiles to ensure the pipeline is sane. |
+
+---
+
+### Bottom line
+All five suggestions are **single‑pass**, **scalar‑field** projections that exploit fields already present (or easily derived) in a typical Megatron gas‑cell cut‑out.  They each target a different physical aspect of the intracluster medium—radiative output, thermodynamic state, motions, chemical enrichment, and entropy structure—providing a balanced toolkit for any downstream AI agent (or human) to generate informative 2‑D images of a simulated galaxy cluster.
+
+======================================================================
