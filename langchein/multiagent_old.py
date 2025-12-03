@@ -43,7 +43,6 @@ models = [    "google/gemma-3-27b-it",
     "openai/gpt-oss-20b"]
 
 LITERATURE_MODEL = models[-2]
-CRITIC_LITERATURE_MODEL = models[-2]
 REASONER_MODEL = models[-2]
 CRITIC_MODEL   = models[-2]
 CODER_MODEL    = models[-2]
@@ -136,37 +135,24 @@ def run_code(code: str) -> Dict[str, Any]:
 
 literature_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a scientific literature review agent and expert in Galaxy formation. "
-     "Analyze the task and propose {num_hypotheses} interesting, realistic hypotheses "
-     "that can be checked by visualization/analysis. Be specific and practical. "
-     "Don't just repeat the task and don't give plans for implementation those hypotheses."),
+     "You are a scientific literature review agent. Analyze the task and propose 5 interesting, "
+     "realistic ideas for visualization/analysis. Be specific and practical."),
     ("user", "{task}")
-])
-
-critic_literature_prompt = ChatPromptTemplate.from_messages([
-    ("system",
-     "You are a critic agent and expert in Galaxy formation. "
-     "Analyze hypotheses proposed by the literature review, get rid of impractical ones, "
-     "and improve the rest into realistic hypotheses that can be checked by visualization/analysis. "
-     "Be specific and practical. Don't just repeat the task and don't give plans for implementation."),
-    ("user", "{hypotheses}")
 ])
 
 reasoner_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a careful reasoning agent. Based on the hypotheses provided, "
-     "create a detailed plan for EACH hypothesis to implement it in Python doing visualizations/analysis. "
-     "Output hypothesis-plan pairs. Do NOT write code."),
+     "You are a careful reasoning agent. Based on the literature review and ideas provided, "
+     "choose the BEST idea and create a clear step-by-step plan to implement it. "
+     "Do NOT write code."),
     ("user", "{task}")
 ])
 
 critic_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a critic agent. Review the hypothesis-plan pairs provided. "
-     "You MUST eliminate at least 1 less promising pair (you can eliminate more if needed). "
-     "Improve the remaining pairs if needed. "
-     "If only 1 pair remains and it's good, say 'Plan is OK'."),
-    ("user", "{pairs}")
+     "You are a critic agent. Improve or fix the provided plan. "
+     "If it is already good, say 'Plan OK'."),
+    ("user", "{plan}")
 ])
 
 coder_prompt = ChatPromptTemplate.from_messages([
@@ -212,23 +198,16 @@ def save_answer_to_file(answer: str, file_path: str, title: str = None) -> None:
 # 5. AGENT RUNNERS
 # ============================================
 
-def run_literature_review(task: str, num_hypotheses: int = 8) -> str:
-    """Run literature review and get N hypotheses"""
-    messages = literature_prompt.format_messages(task=task, num_hypotheses=num_hypotheses)
+def run_literature_review(task: str) -> str:
+    """Run literature review and get 5 ideas"""
+    messages = literature_prompt.format_messages(task=task)
     ai = argonne_llm(messages, model=LITERATURE_MODEL)
     return ai.content
 
 
-def run_literature_critic(hypotheses: str) -> str:
-    """Critique and improve the hypotheses"""
-    formatted = critic_literature_prompt.format_messages(hypotheses=hypotheses)
-    ai = argonne_llm(formatted, model=CRITIC_LITERATURE_MODEL)
-    return ai.content
-
-
-def run_reasoner(hypotheses: str, previous_codes: str = "") -> str:
-    """Create hypothesis-plan pairs for all hypotheses"""
-    full_task = f"Hypotheses to create plans for:\n{hypotheses}"
+def run_reasoner(task: str, literature_review: str, previous_codes: str = "") -> str:
+    """Choose best idea from literature review and create detailed plan"""
+    full_task = f"{task}\n\nLiterature Review and Ideas:\n{literature_review}"
     
     if previous_codes:
         full_task += f"\n\nPrevious codes for reference:\n{previous_codes}"
@@ -238,9 +217,9 @@ def run_reasoner(hypotheses: str, previous_codes: str = "") -> str:
     return ai.content
 
 
-def run_critic(pairs: str) -> str:
-    """Critique hypothesis-plan pairs and eliminate at least 1"""
-    formatted = critic_prompt.format_messages(pairs=pairs)
+def run_critic(plan: str) -> str:
+    """Critique and improve the plan"""
+    formatted = critic_prompt.format_messages(plan=plan)
     ai = argonne_llm(formatted, model=CRITIC_MODEL)
     return ai.content
 
@@ -260,92 +239,79 @@ def run_coder(instructions: str) -> str:
 # 6. MAIN MULTI-AGENT PIPELINE
 # ============================================
 
-def multi_agent(Literature_prompt: str, Code_developer_prompt: str, num_hypotheses: int = 8):
+def multi_agent(Literature_prompt: str, Idea_choose_prompt: str, 
+                Idea_critic_prompt: str, Code_developer_prompt: str):
     
-    # 0) Literature Review Agent → Critic Literature Agent (1 iteration)
+    # 0) Literature Review Agent - Get 5 ideas
     print("\n" + "="*50)
-    print("STEP 0a: LITERATURE REVIEW AGENT")
+    print("STEP 0: LITERATURE REVIEW AGENT")
     print("="*50 + "\n")
     
-    hypotheses = run_literature_review(Literature_prompt, num_hypotheses)
-    print(f"Initial {num_hypotheses} Hypotheses:\n", hypotheses)
+    literature_review = run_literature_review(Literature_prompt)
+    print("Literature Review & 5 Ideas:\n", literature_review)
     
-    # Save initial hypotheses
-    save_answer_to_file(hypotheses, "./outputs/Ideas/initial_hypotheses.txt", 
-                       title=f"Initial {num_hypotheses} Hypotheses")
-    print("\n💾 Saved initial hypotheses → ./outputs/Ideas/initial_hypotheses.txt")
-    
-    print("\n" + "="*50)
-    print("STEP 0b: LITERATURE CRITIC AGENT")
-    print("="*50 + "\n")
-    
-    refined_hypotheses = run_literature_critic(hypotheses)
-    print("Refined Hypotheses:\n", refined_hypotheses)
-    
-    # Save refined hypotheses
-    save_answer_to_file(refined_hypotheses, "./outputs/Ideas/refined_hypotheses.txt", 
-                       title="Refined Hypotheses")
-    print("\n💾 Saved refined hypotheses → ./outputs/Ideas/refined_hypotheses.txt")
+    # Save literature review to file with nice formatting
+    save_answer_to_file(literature_review, "./outputs/Ideas/literature_review.txt", title="Literature Review & 5 Ideas")
+    print("\n💾 Saved literature review → ./outputs/Ideas/literature_review.txt")
 
-    # 1-2) Reasoner ↔ Critic Loop - Eliminate pairs until only 1 remains
+    # 1) Reasoner Agent - Choose 1 idea and make detailed plan
     print("\n" + "="*50)
-    print("STEP 1: REASONING AGENT - Creating hypothesis-plan pairs")
+    print("STEP 1: REASONING AGENT")
     print("="*50 + "\n")
     
     # Read previous codes if available
     previous_codes = read_codes_from_folder("./plotting_codes/")
     
-    pairs = run_reasoner(refined_hypotheses, previous_codes)
-    print("Initial Hypothesis-Plan Pairs:\n", pairs)
-    
-    # Elimination loop
-    max_refinement_iterations = 10
+    plan = run_reasoner(Idea_choose_prompt, literature_review, previous_codes)
+    print("Selected Idea & Detailed Plan:\n", plan)
+
+    # 2) Reasoner-Critic Loop - Iterate until plan is approved
+    max_refinement_iterations = 3
     refinement_iteration = 0
     
     while refinement_iteration < max_refinement_iterations:
         print("\n" + "="*50)
-        print(f"STEP 2: CRITIC AGENT - Elimination Round {refinement_iteration + 1}")
+        print(f"STEP 2: CRITIC AGENT (Refinement {refinement_iteration + 1})")
         print("="*50 + "\n")
         
-        critique = run_critic(pairs)
-        print("Critic feedback:\n", critique)
+        critique = run_critic(plan)
+        # print("Critique:\n", critique)
         
-        # Check if only 1 pair remains and critic approved
-        if "plan is ok" in critique.lower() or "plan ok" in critique.lower():
-            print("\n✅ Critic approved! Only 1 hypothesis-plan pair remains!")
-            final_pair = pairs
+        # Check if critic approved the plan
+        if "plan ok" in critique.lower():
+            print("\n✅ Critic approved the plan!")
+            improved_plan = plan
             break
-        
-        # Update pairs based on critic feedback (critic eliminates + improves)
-        pairs = critique
-        
-        print("\n🔄 Critic eliminated at least 1 pair, sending back to Reasoner...\n")
+    
+        # If not approved, send back to reasoner for refinement
+        print("\n🔄 Plan needs refinement, sending back to Reasoner...\n")
         
         print("\n" + "="*50)
         print(f"STEP 1 (cont): REASONING AGENT - Refinement {refinement_iteration + 1}")
         print("="*50 + "\n")
         
-        # Reasoner refines the remaining pairs
+        # Create refinement task with critic feedback
         refinement_task = (
-            f"Previous hypothesis-plan pairs:\n{pairs}\n\n"
-            f"Please review and refine these pairs based on the feedback."
+            # f"{Idea_choose_prompt}\n\n"
+            f"Previous plan:\n{plan}\n\n"
+            f"Critic feedback:\n{critique}\n\n"
+            f"Please refine the plan based on the critic's feedback."
         )
         
-        pairs = run_reasoner(refinement_task, previous_codes)
-        print("Refined Pairs:\n", pairs)
+        plan = run_reasoner(refinement_task, literature_review, previous_codes)
+        print("Refined Plan:\n", plan)
         
         refinement_iteration += 1
     
     if refinement_iteration >= max_refinement_iterations:
-        print(f"\n⚠️ Maximum iterations ({max_refinement_iterations}) reached. Using last pair.")
-        final_pair = pairs
+        print(f"\n⚠️ Maximum refinement iterations ({max_refinement_iterations}) reached. Using last plan.")
+        improved_plan = plan
     
-    # Save final hypothesis-plan pair
-    save_answer_to_file(final_pair, "./outputs/Ideas/final_hypothesis_plan.txt", 
-                       title="Final Hypothesis-Plan Pair")
-    print("\n💾 Saved final pair → ./outputs/Ideas/final_hypothesis_plan.txt")
+    # Save final plan to file
+    save_answer_to_file(improved_plan, "./outputs/Ideas/final_plan.txt", title="Final Detailed Plan")
+    print("\n💾 Saved final plan → ./outputs/Ideas/final_plan.txt")
     
-    # 3) Coder Agent - Generate code from the final pair
+    # 3) Coder Agent - Generate code from the plan
     print("\n" + "="*50)
     print("STEP 3: CODER AGENT")
     print("="*50 + "\n")
@@ -353,13 +319,13 @@ def multi_agent(Literature_prompt: str, Code_developer_prompt: str, num_hypothes
     # Build full instructions for coder
     coder_instructions = (
         f"{Code_developer_prompt}\n\n"
-        f"Hypothesis and Plan to implement:\n{final_pair}\n\n"
-        f"If you use functions like read_megatron_cutout(), write it in the code, don't just import it elsewhere.\n\n"
-        f"Save the final plot as './outputs/figs/output_plot.png'."
+        f"Plan to implement:\n{improved_plan}\n\n"
+        f"if you use functions read_megatron_cutout() write it in the code, dont take just import it elsewhere.\n\n"
+        f"save the final plot as '/Users/yk2047/Documents/GitHub/hathor/langchein/outputs/figs/output_plot.png'."
     )
     
     if previous_codes:
-        coder_instructions += f"\n\nReference codes:\n{previous_codes}"
+        coder_instructions += f"Reference codes:\n{previous_codes}"
 
     code = run_coder(coder_instructions)
     print("Generated Code:\n")
@@ -388,6 +354,7 @@ def multi_agent(Literature_prompt: str, Code_developer_prompt: str, num_hypothes
 
         # Try to execute the code
         result = run_code.invoke(code)
+        # print(result["output"])
 
         if result["success"]:
             print("\n🎉 SUCCESS: Code executed successfully!")
@@ -428,22 +395,47 @@ I want to do plots for MEGATRON cutout data of gas cells in a halo. It's stored 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
 features for each gas cell.
 
-I want to create 2D images of parameters projected along the z-axis to learn something interesting 
-about galaxy clusters.
+I want to create a 2D image of a some parameter projected along the z-axis.
 
-Please propose interesting hypotheses about galaxy clusters that can be tested through visualization 
-and analysis of this data.
+Please do a literature review and propose 5 interesting features I can plot to learn something about 
+the clusters. It should be something simple that I can plot. It will be used by other AI agents to 
+create code, so propose realistic ideas.
+
+Give me 5 different ideas.
 """
 
-    Code_developer_prompt = """
-I need to create visualization code for MEGATRON cutout data of gas cells in a halo. 
-The binary file is at path: "/Users/yk2047/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
-
+    Idea_choose_prompt = """
+I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file. 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
 features for each gas cell.
 
-Create Python code to implement the hypothesis and plan. The image should have a resolution of 512x512 
-pixels and cover a box size of 20 Mpc at redshift z=0.5. The levels range from 12 to 18.
+I want to create a 2D image of some parameter projected along the z-axis.
+
+Based on the literature review and 5 ideas above, choose the 1 idea that is the most interesting and 
+realistic to implement, and create a detailed step-by-step plan to accomplish the task.
 """
 
-    multi_agent(Literature_prompt, Code_developer_prompt, num_hypotheses=8)
+    Idea_critic_prompt = """
+I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file. 
+The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
+features for each gas cell.
+
+I want to create a 2D image of some parameter projected along the z-axis.
+
+Based on the plan from the reasoning agent, improve or fix the provided plan. If it is already good, 
+say 'Plan OK'.
+"""
+
+    Code_developer_prompt = """
+I need to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file 
+at path: "/Users/yk2047/Documents/GitHub/hathor/dataset_examples/halo_3517_gas.bin"
+
+The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
+features for each gas cells.
+
+Create a Python code to accomplish the task based on the plan provided. The image should have a 
+resolution of 512x512 pixels and cover a box size of 20 Mpc at redshift z=0.5. The levels range 
+from 12 to 18.
+"""
+
+    multi_agent(Literature_prompt, Idea_choose_prompt, Idea_critic_prompt, Code_developer_prompt)
