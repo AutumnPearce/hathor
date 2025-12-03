@@ -1,229 +1,221 @@
-"""
-Multi-Agent Pipeline Orchestrator
-Coordinates all agents to complete the full workflow.
-"""
-import os
-from typing import Dict, Any
+# src/pipeline/multi_agent_pipeline.py
 
-from ..agents.literature_agent import LiteratureAgent
-from ..agents.critic_agent import CriticAgent
-from ..agents.reasoner_agent import ReasonerAgent
-from ..agents.coder_agent import CoderAgent
-from ..agents.runner_agent import RunnerAgent
-from ..utils.file_utils import save_answer_to_file, read_codes_from_folder
+from __future__ import annotations
+
+import os
+
+from ..agents import (
+    LiteratureAgent,
+    CriticAgent,
+    ReasonerAgent,
+    CoderAgent,
+    RunnerAgent,
+)
+from ..config import (
+    LITERATURE_MODEL,
+    CRITIC_LITERATURE_MODEL,
+    REASONER_MODEL,
+    CRITIC_MODEL,
+    CODER_MODEL,
+    BINARY_FILE_PATH,
+    IDEAS_DIR,
+    PREVIOUS_CODES_DIR,
+    OUTPUT_FIG_PATH,
+    FINAL_CODE_PATH,
+)
+from ..utils import (
+    read_codes_from_folder,
+    save_answer_to_file,
+    save_code_to_file,
+)
 
 
 class MultiAgentPipeline:
-    """
-    Orchestrates the multi-agent workflow for hypothesis-driven research.
-    """
-    
-    def __init__(
-        self,
-        llm_client,
-        literature_model: str,
-        critic_model: str,
-        reasoner_model: str,
-        coder_model: str,
-        output_dir: str = "./outputs",
-        reference_codes_dir: str = "./plotting_codes",
-        verbose: bool = True
-    ):
-        """
-        Initialize the pipeline with all agents.
-        
-        Args:
-            llm_client: Function to call LLM
-            literature_model: Model for literature agent
-            critic_model: Model for critic agent
-            reasoner_model: Model for reasoner agent
-            coder_model: Model for coder agent
-            output_dir: Directory for saving outputs
-            reference_codes_dir: Directory with reference code examples
-            verbose: Whether to print progress
-        """
-        # Initialize agents
-        self.lit_agent = LiteratureAgent(literature_model, llm_client, verbose)
-        self.critic_agent = CriticAgent(critic_model, llm_client, verbose)
-        self.reasoner_agent = ReasonerAgent(reasoner_model, llm_client, verbose)
-        self.coder_agent = CoderAgent(coder_model, llm_client, verbose)
-        self.runner_agent = RunnerAgent(verbose)
-        
-        # Configuration
-        self.output_dir = output_dir
-        self.reference_codes_dir = reference_codes_dir
-        self.verbose = verbose
-        
-        # Create output directories
-        os.makedirs(f"{output_dir}/Ideas", exist_ok=True)
-        os.makedirs(f"{output_dir}/figs", exist_ok=True)
-        os.makedirs(f"{output_dir}/executed_codes", exist_ok=True)
-    
+    def __init__(self) -> None:
+        # Instantiate agents with appropriate models
+        self.literature_agent = LiteratureAgent(LITERATURE_MODEL)
+        self.critic_agent = CriticAgent(CRITIC_LITERATURE_MODEL)
+        self.reasoner_agent = ReasonerAgent(REASONER_MODEL)
+        self.coder_agent = CoderAgent(CODER_MODEL)
+        self.runner_agent = RunnerAgent(self.coder_agent)
+
+        # Ensure output dirs exist
+        os.makedirs(IDEAS_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(OUTPUT_FIG_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(FINAL_CODE_PATH), exist_ok=True)
+
     def run(
         self,
-        literature_prompt: str,
-        code_prompt: str,
+        literature_task: str,
+        code_developer_prompt: str,
         num_hypotheses: int = 8,
-        max_elimination_rounds: int = 10,
-        max_debug_iterations: int = 5
-    ) -> Dict[str, Any]:
-        """
-        Run the complete multi-agent pipeline.
-        
-        Args:
-            literature_prompt: Prompt for literature review
-            code_prompt: Prompt for code generation
-            num_hypotheses: Number of initial hypotheses
-            max_elimination_rounds: Max rounds for hypothesis-plan elimination
-            max_debug_iterations: Max iterations for code debugging
-            
-        Returns:
-            Dict with final results and metadata
-        """
-        self._print_header("MULTI-AGENT PIPELINE START")
-        
-        # Step 0: Literature Review → Critic Literature
-        hypotheses = self._literature_phase(literature_prompt, num_hypotheses)
-        
-        # Step 1-2: Reasoner ↔ Critic Loop (Elimination)
-        final_pair = self._elimination_phase(hypotheses, max_elimination_rounds)
-        
-        # Step 3-4: Coder → Runner Loop (Debug)
-        code = self._coding_phase(final_pair, code_prompt, max_debug_iterations)
-        
-        self._print_header("PIPELINE COMPLETE")
-        
-        return {
-            "hypotheses": hypotheses,
-            "final_pair": final_pair,
-            "code": code,
-            "success": True
-        }
-    
-    def _literature_phase(self, prompt: str, num_hypotheses: int) -> str:
-        """Phase 0: Generate and refine hypotheses."""
-        self._print_header("PHASE 0: LITERATURE REVIEW")
-        
-        # 0a: Generate hypotheses
-        self._print_step("0a", "Literature Agent - Generating hypotheses")
-        hypotheses = self.lit_agent.run(prompt, num_hypotheses)
-        
+        max_refinement_iterations: int = 10,
+    ) -> None:
+        # 0a) Literature Review Agent
+        print("\n" + "=" * 50)
+        print("STEP 0a: LITERATURE REVIEW AGENT")
+        print("=" * 50 + "\n")
+
+        hypotheses = self.literature_agent.generate_hypotheses(
+            task=literature_task,
+            num_hypotheses=num_hypotheses,
+        )
+        print(f"Initial {num_hypotheses} Hypotheses:\n", hypotheses)
+
         save_answer_to_file(
             hypotheses,
-            f"{self.output_dir}/Ideas/initial_hypotheses.txt",
-            f"Initial {num_hypotheses} Hypotheses"
+            os.path.join(IDEAS_DIR, "initial_hypotheses.txt"),
+            title=f"Initial {num_hypotheses} Hypotheses",
         )
-        self._print(f"💾 Saved → {self.output_dir}/Ideas/initial_hypotheses.txt")
-        
-        # 0b: Critique hypotheses
-        self._print_step("0b", "Critic Agent - Refining hypotheses")
-        refined_hypotheses = self.critic_agent.critique_hypotheses(hypotheses)
-        
+        print(
+            "\n💾 Saved initial hypotheses → "
+            f"{os.path.join(IDEAS_DIR, 'initial_hypotheses.txt')}"
+        )
+
+        # 0b) Literature Critic Agent
+        print("\n" + "=" * 50)
+        print("STEP 0b: LITERATURE CRITIC AGENT")
+        print("=" * 50 + "\n")
+
+        refined_hypotheses = self.critic_agent.review_literature(hypotheses)
+        print("Refined Hypotheses:\n", refined_hypotheses)
+
         save_answer_to_file(
             refined_hypotheses,
-            f"{self.output_dir}/Ideas/refined_hypotheses.txt",
-            "Refined Hypotheses"
+            os.path.join(IDEAS_DIR, "refined_hypotheses.txt"),
+            title="Refined Hypotheses",
         )
-        self._print(f"💾 Saved → {self.output_dir}/Ideas/refined_hypotheses.txt")
-        
-        return refined_hypotheses
-    
-    def _elimination_phase(self, hypotheses: str, max_rounds: int) -> str:
-        """Phase 1-2: Iteratively eliminate hypothesis-plan pairs."""
-        self._print_header("PHASE 1-2: HYPOTHESIS-PLAN ELIMINATION")
-        
-        # Load reference codes
-        previous_codes = read_codes_from_folder(self.reference_codes_dir)
-        
-        # 1: Create initial pairs
-        self._print_step("1", "Reasoner Agent - Creating hypothesis-plan pairs")
-        pairs = self.reasoner_agent.run(hypotheses, previous_codes)
-        
-        # 2: Elimination loop
-        for round_num in range(max_rounds):
-            self._print_step("2", f"Critic Agent - Elimination Round {round_num + 1}")
-            
-            critique, is_approved = self.critic_agent.critique_plans(pairs)
-            
-            if is_approved:
-                self._print("✅ Only 1 pair remains and is approved!")
+        print(
+            "\n💾 Saved refined hypotheses → "
+            f"{os.path.join(IDEAS_DIR, 'refined_hypotheses.txt')}"
+        )
+
+        # 1) Reasoner Agent
+        print("\n" + "=" * 50)
+        print("STEP 1: REASONING AGENT - Creating hypothesis-plan pairs")
+        print("=" * 50 + "\n")
+
+        previous_codes = read_codes_from_folder(PREVIOUS_CODES_DIR)
+        pairs = self.reasoner_agent.create_pairs(refined_hypotheses, previous_codes)
+        print("Initial Hypothesis-Plan Pairs:\n", pairs)
+
+        # 2) Critic ↔ Reasoner loop
+        refinement_iteration = 0
+        final_pair = pairs
+
+        while refinement_iteration < max_refinement_iterations:
+            print("\n" + "=" * 50)
+            print(f"STEP 2: CRITIC AGENT - Elimination Round {refinement_iteration + 1}")
+            print("=" * 50 + "\n")
+
+            critique = self.critic_agent.review_pairs(pairs)
+            print("Critic feedback:\n", critique)
+
+            if "plan is ok" in critique.lower() or "plan ok" in critique.lower():
+                print(
+                    "\n✅ Critic approved! Only 1 hypothesis-plan pair remains!"
+                )
                 final_pair = pairs
                 break
-            
-            # Update pairs with critic's output
+
             pairs = critique
-            
-            self._print("🔄 Refining remaining pairs...")
-            self._print_step("1", f"Reasoner Agent - Refinement {round_num + 1}")
-            pairs = self.reasoner_agent.refine(pairs, critique, previous_codes)
-        else:
-            self._print(f"⚠️ Max rounds ({max_rounds}) reached. Using last pair.")
+
+            print(
+                "\n🔄 Critic eliminated at least 1 pair, sending back to Reasoner...\n"
+            )
+
+            print("\n" + "=" * 50)
+            print(
+                f"STEP 1 (cont): REASONING AGENT - Refinement {refinement_iteration + 1}"
+            )
+            print("=" * 50 + "\n")
+
+            refinement_task = (
+                f"Previous hypothesis-plan pairs:\n{pairs}\n\n"
+                f"Please review and refine these pairs based on the feedback."
+            )
+
+            pairs = self.reasoner_agent.create_pairs(refinement_task, previous_codes)
+            print("Refined Pairs:\n", pairs)
+
             final_pair = pairs
-        
+            refinement_iteration += 1
+
+        if refinement_iteration >= max_refinement_iterations:
+            print(
+                f"\n⚠️ Maximum iterations ({max_refinement_iterations}) reached. "
+                "Using last pair."
+            )
+
         save_answer_to_file(
             final_pair,
-            f"{self.output_dir}/Ideas/final_hypothesis_plan.txt",
-            "Final Hypothesis-Plan Pair"
+            os.path.join(IDEAS_DIR, "final_hypothesis_plan.txt"),
+            title="Final Hypothesis-Plan Pair",
         )
-        self._print(f"💾 Saved → {self.output_dir}/Ideas/final_hypothesis_plan.txt")
-        
-        return final_pair
-    
-    def _coding_phase(self, plan: str, code_prompt: str, max_iterations: int) -> str:
-        """Phase 3-4: Generate and debug code."""
-        self._print_header("PHASE 3-4: CODE GENERATION & EXECUTION")
-        
-        # Load reference codes
-        previous_codes = read_codes_from_folder(self.reference_codes_dir)
-        
-        # 3: Generate code
-        self._print_step("3", "Coder Agent - Generating code")
-        
-        instructions = (
-            f"{code_prompt}\n\n"
-            f"Hypothesis and Plan to implement:\n{plan}"
+        print(
+            "\n💾 Saved final pair → "
+            f"{os.path.join(IDEAS_DIR, 'final_hypothesis_plan.txt')}"
         )
-        
-        output_path = f"{self.output_dir}/figs/output_plot.png"
-        code = self.coder_agent.run(instructions, previous_codes, output_path)
-        
-        # 4: Debug loop
-        for iteration in range(max_iterations):
-            self._print_step("4", f"Runner Agent - Iteration {iteration + 1}")
-            
-            result = self.runner_agent.run(code)
-            
-            if result["success"]:
-                self._print("🎉 Code executed successfully!")
-                break
-            
-            self._print(f"⚠️ Error detected: {result['output'][:100]}...")
-            self._print("Sending to Coder for debugging...")
-            
-            code = self.coder_agent.fix_code(code, result["output"])
-        else:
-            self._print(f"❌ Max iterations ({max_iterations}) reached.")
-        
-        # Save final code
-        with open(f"{self.output_dir}/executed_codes/plot.py", "w") as f:
-            f.write(code)
-        self._print(f"💾 Saved → {self.output_dir}/executed_codes/plot.py")
-        
-        return code
-    
-    def _print_header(self, text: str):
-        """Print section header."""
-        if self.verbose:
-            print("\n" + "="*50)
-            print(text)
-            print("="*50 + "\n")
-    
-    def _print_step(self, step: str, text: str):
-        """Print step information."""
-        if self.verbose:
-            print(f"\n[Step {step}] {text}")
-    
-    def _print(self, text: str):
-        """Print message."""
-        if self.verbose:
-            print(text)
+
+        # 3) Coder Agent
+        print("\n" + "=" * 50)
+        print("STEP 3: CODER AGENT")
+        print("=" * 50 + "\n")
+
+        coder_instructions = (
+            f"{code_developer_prompt}\n\n"
+            f"The MEGATRON gas binary file is located at: {BINARY_FILE_PATH}\n\n"
+            f"Hypothesis and Plan to implement:\n{final_pair}\n\n"
+            "If you use functions like read_megatron_cutout(), write it in the code, "
+            "don't just import it elsewhere.\n\n"
+            f"Save the final plot as '{OUTPUT_FIG_PATH}'."
+        )
+
+        if previous_codes:
+            coder_instructions += f"\n\nReference codes:\n{previous_codes}"
+
+        code = self.coder_agent.generate_code(coder_instructions)
+        print("Generated Code:\n")
+        print(code)
+
+        # 4) Runner Agent (exec + debug)
+        final_code = self.runner_agent.run_with_debug(code)
+
+        save_code_to_file(final_code, FINAL_CODE_PATH)
+        print(f"\n💾 Saved final code → {FINAL_CODE_PATH}\n")
+
+
+def main() -> None:
+    """
+    Default entrypoint used when running as a script/module.
+    Mirrors your original __main__ block.
+    """
+    literature_task = """
+I want to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file. 
+The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
+features for each gas cell.
+
+I want to create 2D images of parameters projected along the z-axis to learn something interesting 
+about galaxy clusters.
+
+Please propose interesting hypotheses about galaxy clusters that can be tested through visualization 
+and analysis of this data.
+"""
+
+    code_developer_prompt = f"""
+I need to create visualization code for MEGATRON cutout data of gas cells in a halo. 
+The binary file is at path: "{BINARY_FILE_PATH}"
+
+The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
+features for each gas cell.
+
+Create Python code to implement the hypothesis and plan. The image should have a resolution of 512x512 
+pixels and cover a box size of 20 Mpc at redshift z=0.5. The levels range from 12 to 18.
+"""
+
+    pipeline = MultiAgentPipeline()
+    pipeline.run(literature_task, code_developer_prompt, num_hypotheses=8)
+
+
+if __name__ == "__main__":
+    main()
