@@ -40,6 +40,7 @@ htmlcov/
 
 # datasets and examples
 dataset_examples/
+test_data/
 ex_code/
 
 # plots 

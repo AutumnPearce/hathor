@@ -9,36 +9,45 @@ class ResearcherAgent(autogen.AssistantAgent):
     """Custom agent with private literature knowledge."""
     
     def __init__(self, name, system_message, llm_config, papers_per_query=10):
+        if "tools" not in llm_config:
+                llm_config["tools"] = []
+            
+        llm_config["tools"].append({
+            "type": "function",
+            "function": {
+                "name": "search_arxiv",
+                "description": "Search arXiv for academic papers on a given topic",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query for arXiv papers"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        })
+        
         super().__init__(name, system_message, llm_config)
         self.papers = []
         self._base_system_message = system_message
         self.papers_per_query = papers_per_query
-        self._register_tools()
-        
 
-    def _register_tools(self):
-        """Register all tools for this agent."""
-        
-        def search_arxiv(query: str) -> str:
-            """
-            Search arxiv and add papers to knowledge base.
-            Use simple queries like 'galaxy formation' or 'AGN feedback'.
-            
-            Args:
-                query: Simple search query for arxiv
-                
-            Returns:
-                Confirmation message with number of papers added
-            """
+        def search_arxiv_tool(query:str = None) -> str:
+            """Search arXiv for academic papers."""
+            if query is None:
+                query = "Galxy formation"
             return self._search_arxiv(query)
-
+        
         autogen.register_function(
-                search_arxiv,
-                caller=self,
-                executor=self,
-                name="search_arxiv",
-                description="Search arXiv for papers and add them to the agent's knowledge base."
-            )
+            search_arxiv_tool,
+            caller=self,
+            executor=self,
+            name="search_arxiv",
+            description="Search arXiv for papers and add them to the agent's knowledge base."
+        )
         
 
     def _search_arxiv(self, query:str):
@@ -80,7 +89,8 @@ class ResearcherAgent(autogen.AssistantAgent):
         paper_strings = self._get_paper_strings(chosen_papers)
 
         self._add_papers(paper_strings)
-        return "Papers added!"
+
+        return "/n/n/n".join(paper_strings)
         
     def _get_paper_strings(self, papers):
         paper_strings = []
