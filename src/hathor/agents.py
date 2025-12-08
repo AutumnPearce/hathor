@@ -38,16 +38,19 @@ class ResearcherAgent(autogen.AssistantAgent):
         def search_arxiv_tool(query:str = None) -> str:
             """Search arXiv for academic papers."""
             if query is None:
-                query = "Galxy formation"
+                query = "Galaxy Formation"
             return self._search_arxiv(query)
         
-        autogen.register_function(
-            search_arxiv_tool,
-            caller=self,
-            executor=self,
-            name="search_arxiv",
-            description="Search arXiv for papers and add them to the agent's knowledge base."
-        )
+        try:
+            autogen.register_function(
+                search_arxiv_tool,
+                caller=self,
+                executor=self,
+                name="search_arxiv",
+                description="Search arXiv for papers and add them to the agent's knowledge base."
+            )
+        except: 
+            pass
         
 
     def _search_arxiv(self, query:str):
@@ -69,7 +72,7 @@ class ResearcherAgent(autogen.AssistantAgent):
         """
         half = self.papers_per_query//2
         client = arxiv.Client()
-        search = arxiv.Search(query=query,  
+        search = arxiv.Search(query=f"(cat:astro-ph.GA OR cat:astro-ph.CO) AND {query}",  
                                 max_results=20,
                                 sort_by=arxiv.SortCriterion.SubmittedDate,
                                 sort_order=arxiv.SortOrder.Descending 
@@ -77,7 +80,7 @@ class ResearcherAgent(autogen.AssistantAgent):
         results = list(client.results(search))
         recent_papers = np.random.choice(results, size=5, replace=False)
 
-        search = arxiv.Search(query=query,  
+        search = arxiv.Search(query=f"(cat:astro-ph.GA OR cat:astro-ph.CO) AND {query}",  
                                 max_results=20,
                                 sort_by=arxiv.SortCriterion.Relevance, 
                                 sort_order=arxiv.SortOrder.Descending
