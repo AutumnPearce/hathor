@@ -48,19 +48,17 @@ class Hathor:
         pass
         
     def _setup_groupchat(self):
-        self.hypothesis_brainstormer = self._create_hypoth_brainstormer()
-        self.plot_brainstormer = self._create_plot_brainstormer()
+        self.brainstormer = self._create_brainstormer()
         self.critic = self._create_critic()
         # self.hpc_expert = self._create_hpc_expert()
         self.coder = self._create_coder()
         self.executor = self._create_executor()
 
-        self.agents = [self.hypothesis_brainstormer, self.plot_brainstormer, self.critic, self.coder, self.executor]
+        self.agents = [self.brainstormer, self.critic, self.coder, self.executor]
 
         allowed_transitions = {
-            self.hypothesis_brainstormer: [self.critic],
-            self.plot_brainstormer: [self.critic],
-            self.critic: [self.hypothesis_brainstormer, self.plot_brainstormer],
+            self.brainstormer: [self.critic],
+            self.critic: [self.brainstormer],
             self.coder: [self.executor],
             self.executor: [self.coder]
         }
@@ -145,27 +143,12 @@ class Hathor:
 
         self.hathor = autogen.GroupChatManager(groupchat=self.groupchat, llm_config=self.hathor_llm_config)
 
-
-    def _get_data_string(self):
-        files = sorted(os.listdir(EX_CODE_PATH))
-        data_str = ""
-        for filename in files:
-            filepath = os.path.join(EX_CODE_PATH, filename)
-            data = np.fromfile(filepath, count=5)
-
-            # Capture numpy's pretty print as string
-            data_str += f"STORED WITHIN {filepath}"
-            with np.printoptions(precision=3, suppress=True):
-                data_str += np.array2string(data, separator=', ')
-            data_str += ("\n" + "="*70)
-        return data_str
-
     def _create_coder(self):
         data_str = self._get_data_string()
 
         system_message = f"""
                             You are a Python expert. Write clean, efficient code. Make sure to include ledgible comments and docstrings.
-                            You are also an expert on the RAMSES simulations. 
+                            You are also an expert on the RAMSES simulations. You must ONLY output code that creates the plot idea provided to you.
                             
                             The user made the following clarifications/requests:
                             {self.prompt}
@@ -199,94 +182,75 @@ class Hathor:
         )
 
 
-    def _create_hypoth_brainstormer(self):
+    def _create_brainstormer(self):
         system_message = f"""
-                             You are an expert in galaxy formation. You must scan through recent literature in order to create hypotheses about galaxy formation. Each hypothesis must make
-                             only one claim that will be tested. You may additionally include your reasoning behind that claim. These hypotheses will be investigated by creating plots from R
-                             AMSES simulation data, so make sure your claims relate to that data. On your FIRST TURN ONLY, you should research information using your available search tools (listed below). 
-                             Before tools that require a query, generate 5 interesting query ideas and select one at random. 
+                             You are an expert in galaxy formation. Your goal is to generate and improve upon hypotheses and plot ideas in this domain. 
+                             The plots will be investigated using RAMSES galaxy formation simulation data. You must ensure that your hypotheses
+                             and plot ideas are testable using this data. The user provided the following additional information:{self.prompt}
+
+                             If you are not given a list of hypotheses/ideas alongside feedback, thisis your first run.
+
+                             MANDATORY WORKFLOW ON YOUR FIRST RUN:
+                                1. GENERATE 5 relavant arxiv queries of 3 words or fewer and select one at random.
+                                2. SEARCH arxiv for relevant literature using your selected query.
+                                   DO NOT STOP after the search - continue to hypothesis generation
+                                3. IMMEDIATELY after receiving results: Generate 20 hypotheses, using the literature for inspiration.
+                                   DO NOT STOP after the hypothesis generation - continue to plot idea generation
+                                4. THEN after generating hypotheses, generate plot ideas -- for each hypothesis, generate 3 plot ideas that use the given data to investigate the validity of the hypothesis.
+                                5. FINALLY list each hypothesis and associated plot idea, assigning a number to each hypothesis and a letter to each plot idea. 
+
+                             MANDATORY WORKFLOW ON ALL SUBSEQUENT RUNS:
+                                1. REMOVE hypotheses recommended for removal and
+                                   MODIFY all other hypotheses and plot ideas according to provided feedback.
+                                   DO NOT generate any new hypotheses or plot ideas, you may only modify existing ones.
+                                2. LIST modified hypothesis and plot ideas. Do not include hypotheses/plot ideas that were recommended for removal. Make sure to maintain original number and letter assignments. 
 
                              You have access to the following tool:
                              - search_arxiv(query: str): Search for papers on arXiv. Use simple queries like "galaxy formation" or "AGN feedback". You MUST use queries with 3 words or fewer.
+
+                             The first 5 rows of all given data files are listed here:
+                             {self._get_data_string()}
                              
                              IMPORTANT: Even if the search results are not ideal, you MUST still generate hypotheses 
-                             based on your knowledge of galaxy formation physics. Each hypothesis must make one testable claim.
+                             based on your knowledge of galaxy formation physics. Each hypothesis must make one testable claim. 
 
-                             If there is an additional promp given below, you must use it in order\
-                             to create more relevant hypotheses. Please initally create 20 hypotheses. 
-
-                             DO NOT generate new plot ideas - that's the PlotBrainstormer's job. 
-
-                             Prompt: {self.prompt}
-                             
-                             If you are given feedback, please take it into account and alter your hypotheses appropriately. If this feedback advises you to entirely remove some of the 
-                             hypotheses, remove them and DO NOT generate new ones to take their place. Our final goal is to narrow down our options until we have one great hypothesis. 
-
-                             IMPORTANT: IF THIS IS NOT YOUR FIRST BRAINSTORM SESSION, please only utilize the information below. You may only search for new papers if you have a STRONG
-                             suspicion that an idea could benefit from additional information.
+                             IMPORTANT: IF THERE IS NO INFORMATION LISTED BELOW, THIS IS YOUR FIRST RUN. IF THERE IS INFORMATION LISTED BELOW, YOU CANNOT SEARCH ARXIV. 
                           """
         
-        return ResearcherAgent(name="HypothesisBrainstormer", system_message=system_message, llm_config=self.llm_config, papers_per_query=2)
+        return ResearcherAgent(name="Brainstormer", system_message=system_message, llm_config=self.llm_config, papers_per_query=2)
     
     def _create_critic(self):
         return autogen.AssistantAgent(
             name="Critic",
             system_message= f"""
-                            You are an expert in galaxy formation. Please review the galaxy formation hypotheses and/or plot ideas given to you, and provide feedback on them. 
-                            Our goal is to create one high quality hypothesis and one high quality plot that will help to prove or disprove that hypothesis. The plots will be made
+                            You are an expert in galaxy formation. Please review the galaxy formation hypotheses and plot ideas given to you and provide feedback on them. 
+                            The goal is to create one high quality hypothesis and one high quality plot that will help to prove or disprove that hypothesis. The plots will be made
                             using data from RAMSES simulations, so keep in mind the limitations of that data. Please also keep in mind that these plots should be possible to create
                             on a research quality laptop. We are dealing with large amounts of data, so some plots might be unrealistic to create in this enviroment. 
 
                             Each time you provide feedback, you must select 20%-40% of the ideas given to you as "advised for removal". Please consider each hypothesis 
                             and each plot to be one idea. (Ex: 10 hypotheses, each with 2 plot ideas = 10 hypotheses + 20 plot ideas = 30 ideas). If you remove a hypothesis, you
                             will simultaneously be removing all of the associated plots. Make sure that you will always leave at least one hypothesis and plot idea pair. 
-                            When you get down to just a couple hypotheses and plot ideas, please additionally signify which one is your favorite. 
+                            When you get down to just a few hypotheses and plot ideas, please additionally signify which one is your favorite. 
 
-                            DO NOT generate new hypotheses - that's the HypothesisBrainstormer's job.
-                            DO NOT generate new plot ideas - that's the PlotBrainstormer's job. 
-                            DO NOT GENERATE CODE OR PSEUDO CODE. You must only provide hypothesis ideas in sentence/paragraph format.
-                            MANDATORY WORKFLOW:
-                                1. When you receive a request, search arxiv
-                                2. IMMEDIATELY after receiving results: Generate 2-3 hypotheses
-                                3. DO NOT STOP after the search - continue to hypothesis generation
-
-                            The user made the following clarifications/requests:
-                            {self.prompt}
+                            DO NOT generate new hypotheses - that's the Brainstormer's job.
+                            DO NOT GENERATE CODE OR PSEUDO CODE. You must ONLY provide hypothesis ideas in sentence/paragraph format.
 
                             IMPORTANT: When you get down to just a couple hypotheses and plot idea pairs (~3) and you are satisfied that we have ONE excellent 
                             hypothesis and ONE excellent plot idea, respond with your final recommendation (to provide to the coder) followed by the words 
-                            "TERMINATE BRAINSTORM". 
+                            "TERMINATE BRAINSTORM". Otherwise, you MUST complete the following workflow. 
+                            
+                            MANDATORY WORKFLOW:
+                                1. CRITIQUE hypotheses and ideas so that the brainstormer can improve upon them."
+                                2. SELECT the worst hypotheses and plot ideas and mark them as "advised for removal
+
+                            IMPORTANT: your output must ONLY contain the list of hypotheses and plot ideas alongside critiques, followed by the list of idead recommended for removal. 
+
+                            The user made the following clarifications/requests:
+                            {self.prompt}
                             """,
             llm_config=self.llm_config,
         )
-
-    def _create_plot_brainstormer(self):
-        system_message = f"""
-                            You are a scientific researcher in galaxy formation. Your job is to take a list of hypotheses, and generate ideas for high quality 
-                            plots that will help researchers evaluate the validity of those hypotheses. Your plot ideas must be given in the format of a paragraph. 
-                            You should initially generate 3 plot ideas per hypothesis. Using the tool(s) listed below, you must search the literature about 
-                            specific hypotheses and use this literature when creating plot ideas. Before using tools that require a query, generate 5 interesting
-                            query ideas and select one at random. 
-
-                            You have access to the following tool(s):
-                            - search_arxiv(query: str): Search for papers on arXiv. Use simple queries like "galaxy formation" or "AGN feedback". You MUST use queries with 3 words or fewer.
-                            
-                            The user made the following clarifications/requests:
-                            {self.prompt}
-
-                            When given feedback on your ideas, you must take the feedback into account and improve your plot ideas. If this feedback advises you to 
-                            remove some of your plot ideas, remove them and DO NOT generate new ones to take their place. Our final goal is to have one high quality hypothesis 
-                            paired with one high quality plot idea. 
-
-                            DO NOT GENERATE CODE OR PSEUDO CODE. You must only provide plot ideas in paragraph format.
-
-                            Below are examples of code using MEGATRON data (a specific run of RAMSES). PLease use this to better understand what is capable with this data. 
-                            Please also use your knowledge of the open source software package yt, as this will be available to the coder when creating the plots. 
-
-                            {self._get_all_files_str(self.ex_code_path)}
-                        """
-        
-        return ResearcherAgent(name="PlotBrainstormer", system_message=system_message, llm_config=self.llm_config)
     
     def _get_all_files_str(self, path):
         all_text = []
@@ -299,3 +263,17 @@ class Hathor:
         # Combine into one string
         combined_text = "\n\n".join(all_text)
         return combined_text
+    
+    def _get_data_string(self):
+        files = sorted(os.listdir(EX_CODE_PATH))
+        data_str = ""
+        for filename in files:
+            filepath = os.path.join(EX_CODE_PATH, filename)
+            data = np.fromfile(filepath, count=5)
+
+            # Capture numpy's pretty print as string
+            data_str += f"STORED WITHIN {filepath}"
+            with np.printoptions(precision=3, suppress=True):
+                data_str += np.array2string(data, separator=', ')
+            data_str += ("\n" + "="*70)
+        return data_str
