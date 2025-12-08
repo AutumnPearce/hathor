@@ -2,6 +2,7 @@ import autogen
 from .agents import ResearcherAgent
 import arxiv
 import os
+import numpy as np
 
 TEST_DATA_PATH = "/Users/autumn/Documents/GitHub/hathor/test_data"
 EX_CODE_PATH = "/Users/autumn/Documents/GitHub/hathor/ex_code"
@@ -68,7 +69,7 @@ class Hathor:
             # Get the last message
             last_message = groupchat.messages[-1] if groupchat.messages else None
 
-            if len(groupchat.messages) > 3 and len(groupchat.messages) % 3 == 0::
+            if len(groupchat.messages) > 3 and len(groupchat.messages) % 3 == 0:
                 print(f"Summarizing conversation at {len(groupchat.messages)} messages...")
                 
                 # Create a detailed summary prompt
@@ -144,7 +145,24 @@ class Hathor:
 
         self.hathor = autogen.GroupChatManager(groupchat=self.groupchat, llm_config=self.hathor_llm_config)
 
+
+    def _get_data_string(self):
+        files = sorted(os.listdir(EX_CODE_PATH))
+        data_str = ""
+        for filename in files:
+            filepath = os.path.join(EX_CODE_PATH, filename)
+            data = np.fromfile(filepath, count=5)
+
+            # Capture numpy's pretty print as string
+            data_str += f"STORED WITHIN {filepath}"
+            with np.printoptions(precision=3, suppress=True):
+                data_str += np.array2string(data, separator=', ')
+            data_str += ("\n" + "="*70)
+        return data_str
+
     def _create_coder(self):
+        data_str = self._get_data_string()
+
         system_message = f"""
                             You are a Python expert. Write clean, efficient code. Make sure to include ledgible comments and docstrings.
                             You are also an expert on the RAMSES simulations. 
@@ -152,7 +170,9 @@ class Hathor:
                             The user made the following clarifications/requests:
                             {self.prompt}
 
-                            All data can be found at {self.data_path}
+                            All data can be found in {self.data_path}
+
+                            The first 5 rows of each file in that path can be found here: {data_str}
                             
                             You have access to the following packages: yt, numpy, pandas, matplotlib, scipy
 
