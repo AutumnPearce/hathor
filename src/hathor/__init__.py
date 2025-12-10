@@ -2,7 +2,6 @@
 __version__ = "0.0.0"
 __author__ = "Autumn Pearce, Yevhen Kylivnyk"
 
-
 from .hathor import Hathor
-from .agents import ResearcherAgent
-__all__ = ["Hathor","BrainstormerAgent"]
+from .agents import HypothesisBrainstormer, PlotBrainstormer, Critic, IdeaCleaner, Coder, Executor
+__all__ = ["Hathor", "HypothesisBrainstormer", "PlotBrainstormer", "Critic", "IdeaCleaner", "Coder", "Executor"]
