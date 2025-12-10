@@ -289,8 +289,8 @@ class Coder:
                     - You must start by explaining your plan for creating/debugging the code. 
                     - This must be possible to run on a research-grade laptop. Please keep computational cemplexity and runtime low when possible. 
                     - You (usually) have access to the following packages: yt, numpy, pandas, matplotlib, scipy
-                    - Return code as a string suitable for execution.
-                    - AT THE END, output a JSON dictionary of your suggestions according to this format:
+                    - Return code as a string suitable for IMMEDIATE execution with a something like exec().
+                    - AT THE END, output a JSON dictionary according to this format:
                     {parser.get_format_instructions()}
                 """
         
