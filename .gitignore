@@ -44,6 +44,6 @@ test_data/
 ex_code/
 
 # plots 
-langchein/outputs/
+langchain/outputs/
 
 inference_auth_token.py
