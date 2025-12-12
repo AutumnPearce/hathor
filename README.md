@@ -1,14 +1,14 @@
 # hathor
 Multi-agent system for generating galaxy formation hypotheses and creating relevant plots from RAMSES simulation data.
 
-### Basic Installation (of Scheme 1)
+### Basic Installation
 ```bash
 cd hathor
 # cd langhchain  # for accesising the langchein
 pip install -e .
 ```
 
-### Development Installation(of Scheme 1)
+### Development Installation
 ```bash
 # Navigate to the cloned repository
 cd path/to/hathor
@@ -25,7 +25,7 @@ pytest
 ## State of this Project
 This code currently functions (see example below), but it is a work in progress. It iss currently optimized for data from the MEGATRON simulations. For more information see the file report.pdf. 
 
-## Example Usage (of Langraph Scheme)
+## Example Usage (of LangGraph Scheme)
 ```python
 from hathor import Hathor
 
@@ -59,7 +59,7 @@ print(list(final_state['plot_ideas'].values())[0])
 print(final_state['generated_code'])
 ```
 
-## Example Usage (of Langchain Scheme)
+## Example Usage (of LangChain Scheme)
 ```python
 from src.pipeline.multi_agent_pipeline import MultiAgentPipeline
 
