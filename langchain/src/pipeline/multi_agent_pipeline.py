@@ -198,6 +198,13 @@ class MultiAgentPipeline:
 
         save_code_to_file(final_code, FINAL_CODE_PATH)
         print(f"\n💾 Saved final code → {FINAL_CODE_PATH}\n")
+        return {
+                "hypotheses": hypotheses,
+                "refined_hypotheses": refined_hypotheses,
+                "final_pair": final_pair,
+                "generated_code": final_code
+}
+
 def main() -> None:
     """
     Default entrypoint used when running as a script/module.
