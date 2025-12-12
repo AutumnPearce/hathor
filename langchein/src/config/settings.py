@@ -38,6 +38,8 @@ IDEAS_DIR = os.path.join(BASE_OUTPUT_DIR, "Ideas")
 FIGS_DIR = os.path.join(BASE_OUTPUT_DIR, "figs")
 EXECUTED_CODES_DIR = os.path.join(BASE_OUTPUT_DIR, "executed_codes")
 PREVIOUS_CODES_DIR = "./plotting_codes"
+DATA_DESCRIPTION_PATH = "./plotting_codes/Example.txt"
+
 
 OUTPUT_FIG_PATH = os.path.join(FIGS_DIR, "output_plot.png")
 FINAL_CODE_PATH = os.path.join(EXECUTED_CODES_DIR, "plot.py")

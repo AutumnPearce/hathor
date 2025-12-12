@@ -22,11 +22,15 @@ from ..config import (
     PREVIOUS_CODES_DIR,
     OUTPUT_FIG_PATH,
     FINAL_CODE_PATH,
+    DATA_DESCRIPTION_PATH,  # <-- NEW
 )
 from ..utils import (
     read_codes_from_folder,
     save_answer_to_file,
     save_code_to_file,
+    load_description,          # <-- make sure it's imported
+    as_prompt_block,
+    read_code_from_file
 )
 
 
@@ -48,8 +52,8 @@ class MultiAgentPipeline:
         self,
         literature_task: str,
         code_developer_prompt: str,
-        num_hypotheses: int = 8,
-        max_refinement_iterations: int = 10,
+        num_hypotheses: int = 3,
+        max_refinement_iterations: int = 2,
     ) -> None:
         # 0a) Literature Review Agent
         print("\n" + "=" * 50)
@@ -94,7 +98,7 @@ class MultiAgentPipeline:
         print("\n" + "=" * 50)
         print("STEP 1: REASONING AGENT - Creating hypothesis-plan pairs")
         print("=" * 50 + "\n")
-
+        important_utils = read_code_from_file("./plotting_codes/cutout_utils.py") # read imprtant utils, can be replaced with your own path
         previous_codes = read_codes_from_folder(PREVIOUS_CODES_DIR)
         pairs = self.reasoner_agent.create_pairs(refined_hypotheses, previous_codes)
         print("Initial Hypothesis-Plan Pairs:\n", pairs)
@@ -161,14 +165,25 @@ class MultiAgentPipeline:
         print("\n" + "=" * 50)
         print("STEP 3: CODER AGENT")
         print("=" * 50 + "\n")
+        print("\n" + "=" * 50)
+        print("STEP 3: CODER AGENT")
+        print("=" * 50 + "\n")
 
+        # Load description file
+        description_lines = load_description(DATA_DESCRIPTION_PATH)
+        description_block = as_prompt_block(description_lines)
         coder_instructions = (
             f"{code_developer_prompt}\n\n"
             f"The MEGATRON gas binary file is located at: {BINARY_FILE_PATH}\n\n"
+            "Below is a data description/example explaining one existing analysis workflow.\n"
+            "Use it ONLY as inspiration for what kinds of visualizations are possible. If your task is completely different, no need to use that file \n\n"
+            f"{description_block}\n\n"
             f"Hypothesis and Plan to implement:\n{final_pair}\n\n"
             "If you use functions like read_megatron_cutout(), write it in the code, "
             "don't just import it elsewhere.\n\n"
             f"Save the final plot as '{OUTPUT_FIG_PATH}'."
+            f"Very imprtant utils that might help you:\n{important_utils}"
+
         )
 
         if previous_codes:
@@ -183,13 +198,12 @@ class MultiAgentPipeline:
 
         save_code_to_file(final_code, FINAL_CODE_PATH)
         print(f"\n💾 Saved final code → {FINAL_CODE_PATH}\n")
-
-
 def main() -> None:
     """
     Default entrypoint used when running as a script/module.
     Mirrors your original __main__ block.
     """
+
     literature_task = """
 I want to do plots for MEGATRON cutout data of gas cells in a halo. It's stored in a binary file. 
 The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
@@ -206,16 +220,13 @@ and analysis of this data.
 I need to create visualization code for MEGATRON cutout data of gas cells in a halo. 
 The binary file is at path: "{BINARY_FILE_PATH}"
 
-The data contains positions (x,y,z), levels, ne (electron number density), dx (cell size), and other 
-features for each gas cell.
-
 Create Python code to implement the hypothesis and plan. The image should have a resolution of 512x512 
 pixels and cover a box size of 20 Mpc at redshift z=0.5. The levels range from 12 to 18.
 """
-
     pipeline = MultiAgentPipeline()
     pipeline.run(literature_task, code_developer_prompt, num_hypotheses=8)
 
 
+# DO NOT INDENT THIS INSIDE THE FUNCTION
 if __name__ == "__main__":
     main()

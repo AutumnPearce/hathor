@@ -1,0 +1,156 @@
+# RAMSES/MEGATRON Data Analysis - Example Use Cases
+
+**IMPORTANT:** This summary describes ONE SPECIFIC RESEARCH PROJECT's code as an example of what's possible with RAMSES simulation data. Your project may have different scientific goals and should create different plots. Use these examples as inspiration for the TYPES of analyses possible, not as a prescriptive list.
+
+## What Data is Available (General)
+
+**The RAMSES simulations contain:**
+- **Gas cells:** Position, velocity, density, temperature, pressure, chemical abundances, ionization states, radiation fields
+- **Star particles:** Position, velocity, age, mass, metallicity
+- **Halo catalogs:** Halo properties like virial radius, mass, derived quantities
+
+**In the example code, one researcher focused on:**
+- Photoionization processes in the circumgalactic medium (CGM)
+- Ionization from local sources vs. ultraviolet background
+- Ion column densities and covering fractions
+- Phase space properties (density-temperature distributions)
+
+## General Plot Types Demonstrated in Example Code
+
+### 1. **2D Histograms / Heatmaps**
+**What the example did:** Phase space diagrams (density vs temperature) weighted by ion mass or ionization rates
+**Generalizable to:** Any 2D relationship between simulation quantities
+- X-Y scatter density plots
+- Parameter space exploration
+- Property distributions weighted by mass, volume, or other quantities
+**Technical notes:** Can use adaptive mesh data with multiple refinement levels, results in 2D arrays/images
+
+### 2. **Radial Profiles / 1D Trends**
+**What the example did:** Ionization properties vs. distance from halo center (impact parameter)
+**Generalizable to:** Any property as function of radius or other scalar
+- Profiles from halo center outward
+- Running averages with uncertainty bands
+- Comparisons between different radial definitions (spherical, cylindrical, projected)
+**Technical notes:** Can compute in spherical shells or use rolling windows for smoothing
+
+### 3. **Projected 2D Images (Maps)**
+**What the example did:** Column density maps, ionization rate maps from different viewing angles
+**Generalizable to:** Any line-of-sight integrated quantity
+- Mass-weighted projections
+- Volume-weighted averages along sight lines
+- Multiple viewing directions (x, y, z axes)
+- Comparing projections vs. slice views
+**Technical notes:** RAMSES AMR requires careful handling of refinement levels when projecting
+
+### 4. **Multi-Panel Comparison Figures**
+**What the example did:** 2x3 grids showing (uniform/damped UVB) × (x/y/z viewing angles)
+**Generalizable to:** Systematic parameter studies
+- Grid showing effect of varying assumptions
+- Same analysis for multiple objects/snapshots
+- Before/after comparisons
+- Different physical processes side-by-side
+**Technical notes:** Important for showing consistency across viewing angles or robustness to assumptions
+
+### 5. **Discrete Categorization Maps**
+**What the example did:** 4-category pixel classification (covered+dominated, covered+UVB, etc.)
+**Generalizable to:** Any classification scheme
+- Regions categorized by dominant process
+- Phase identification (hot/warm/cold, ISM/CGM/IGM)
+- Binary masks (above/below threshold)
+- Color-coded by property bins
+**Technical notes:** Uses discrete colormaps with clear category labels in legend
+
+### 6. **Statistical Aggregation Plots**
+**What the example did:** Fraction of volume/mass in different categories, covering fractions
+**Generalizable to:** Derived scalar statistics
+- Histograms of distributions
+- Cumulative distribution functions
+- Summary statistics (mean, median, percentiles)
+- Fractions/proportions of material in different states
+**Technical notes:** Can weight by mass, volume, luminosity, etc.
+
+### 7. **Scatter Plots with Fits**
+**What the example did:** Stellar mass vs. star formation rate with linear regression and residuals
+**Generalizable to:** Relationships between halo/galaxy properties
+- Scaling relations
+- Correlation analysis
+- Identifying outliers
+- Residuals from expected trends
+**Technical notes:** Can use halo catalogs to compare properties across many objects
+
+### 8. **Overlaid Multi-Component Visualizations**
+**What the example did:** Three ionization sources shown with different colormaps on same phase diagram
+**Generalizable to:** Showing multiple related quantities together
+- Contours over heatmaps
+- Multiple colormaps with transparency/masking
+- Vector fields over scalar fields
+- Particle positions over gas distributions
+**Technical notes:** Requires careful attention to colormap choices and alpha blending
+
+## Key Technical Considerations from Example
+
+### Working with RAMSES AMR Data
+- Adaptive mesh refinement requires special handling (multiple refinement levels)
+- Custom functions exist for projecting AMR data into 2D images
+- Cell sizes vary spatially - need to account for this in volume/area calculations
+
+### Typical Dataset Scales
+- **Example used:** Single halo cutout (~50 kpc), single timestep, ~10^5-10^6 gas cells
+- Different datasets may have: Full box simulations, multiple snapshots, zoom-in regions
+- Consider memory/processing constraints for high-resolution images (4096² pixels can be intensive)
+
+### Common Data Access Patterns
+- Load gas/star data from binary files (Fortran format in example)
+- Store in pandas DataFrames for easy manipulation
+- Derive quantities not directly stored (electron density, cell mass, refinement level)
+- Cache expensive calculations to avoid recomputation
+
+### Visualization Considerations
+- Logarithmic scales often essential (density, temperature span many orders of magnitude)
+- Masked arrays handle regions with no data
+- Multiple colormaps can show different quantities on same figure
+- Consistent normalization across panels aids comparison
+
+## Concrete Examples from the Reference Code
+*(These are specific to one research project - adapt concepts to your science goals)*
+
+1. **"Three-color phase diagram":** Three ionization sources shown with different colormaps (amber/voltage/toxic) overlaid on nH-T phase space, with transparency based on ion mass
+
+2. **"Ionization source vs radius":** Three lines (self/UVB/collisional) showing proportion of total ionization, with rolling average and uncertainty bands, as function of b/r_vir
+
+3. **"Multi-view covering maps":** Grid layout with columns=viewing directions (x/y/z) and rows=assumptions (uniform vs self-shielded UVB)
+
+4. **"Four-category pixel classification":** Discrete colormap showing regions that are (covered+self-dominated) vs (covered+UVB) vs (uncovered+self-dominated) vs (uncovered+UVB)
+
+5. **"Covering fraction vs impact parameter":** Line plots for three viewing directions showing how fraction of optically thick gas changes from center to virial radius
+
+6. **"Stellar mass vs SFR with residuals":** Scatter plot of many halos with best-fit power law, used to identify which halos are starbursting vs quiescent
+
+## Key Python Tools Used in Example
+- **pandas:** DataFrames for tabular data (gas cells, star particles, halo catalogs)
+- **numpy:** Array operations, masking, histogram calculations
+- **matplotlib:** All plotting (imshow, scatter, line plots, multi-panel figures)
+- **scipy:** File I/O (FortranFile), statistics (linear regression)
+- Custom helper functions for AMR image generation
+
+## Guidelines for Your Own Hypotheses
+
+**DO:**
+- Think about what physical relationships you want to test
+- Consider what quantities are available in the simulation
+- Design plots that clearly show spatial, temporal, or parametric trends
+- Use appropriate weighting (mass-weighted? volume-weighted? number-weighted?)
+- Check if your idea requires multiple snapshots or just single snapshot
+- Consider whether projection effects matter (if so, use multiple viewing angles)
+
+**DON'T:**
+- Assume you're limited to the exact plots in this example
+- Feel constrained by the specific scientific topic (photoionization) in the example
+- Assume all possible ions/fields shown here are what you need
+- Copy plot designs without thinking if they serve your hypothesis
+
+**REMEMBER:**
+- This example focused on CGM ionization - you may study star formation, dark matter, AGN feedback, etc.
+- The plot *types* are generalizable, but the specific quantities and interpretations should match your science
+- Your hypothesis should drive plot design, not the other way around
+- Be creative! The best plots often combine multiple techniques (e.g., phase diagram + radial profiles)

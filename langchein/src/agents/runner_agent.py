@@ -14,20 +14,24 @@ class RunnerAgent:
         self.max_iterations = max_iterations
 
     def run_with_debug(self, code: str) -> str:
-        """
-        Try to run code; on failure ask the coder to fix and retry.
-        Returns final code (possibly still failing if max_iterations exceeded).
-        """
         iteration = 0
 
         while iteration < self.max_iterations:
             print("\n" + "=" * 50)
             print(f"STEP 4: RUNNER AGENT (Iteration {iteration + 1})")
             print("=" * 50 + "\n")
+            # NEW: Empty code check (fixes silent failures)
+            if not code or not code.strip():
+                print("❌ Empty or whitespace-only code detected → asking coder to regenerate.\n")
+                fix_instructions = (
+                    "The previous code was empty or invalid. "
+                    "Generate complete, valid Python code that performs the required task."
+                )
+                code = self.coder_agent.generate_code(fix_instructions)
+                iteration += 1
+                continue
 
-            # Syntax check
             if not is_valid_python(code):
-                print("❌ Invalid Python syntax detected, asking coder to fix...\n")
                 fix_instructions = (
                     "The following code has invalid Python syntax. "
                     "Fix it and output ONLY valid Python code.\n\n"
@@ -37,15 +41,11 @@ class RunnerAgent:
                 iteration += 1
                 continue
 
-            # Try to run
             result = run_code.invoke(code)
 
             if result["success"]:
                 print("\n🎉 SUCCESS: Code executed successfully!")
                 return code
-
-            print("\n⚠️ ERROR detected → sending to coder for debugging...\n")
-            print("Error Output:\n", result["output"])
 
             fix_instructions = (
                 "Fix the following code so it runs without errors. "
@@ -61,3 +61,4 @@ class RunnerAgent:
             "Returning last version of the code..."
         )
         return code
+

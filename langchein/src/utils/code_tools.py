@@ -16,11 +16,21 @@ def strip_markdown(text: str) -> str:
 
 
 def is_valid_python(code: str) -> bool:
+    """
+    Returns True only if:
+    - code is non-empty
+    - code has non-whitespace content
+    - code parses successfully
+    """
+    if not code or not code.strip():
+        return False
+
     try:
         ast.parse(code)
         return True
     except Exception:
         return False
+
 
 
 @tool
@@ -50,12 +60,28 @@ def code_extractor_tool(text: str) -> str:
     return code
 
 
+
 @tool
 def run_code(code: str) -> Dict[str, Any]:
-    """Execute Python code in a clean environment."""
+    """
+    Execute Python code in a clean environment.
+    Returns:
+        success: bool   -> False if ANY exception occurs
+        output:  str    -> traceback or stdout
+    """
     local_env: Dict[str, Any] = {}
     try:
         exec(code, {}, local_env)
-        return {"success": True, "output": "Execution successful."}
+
+        # NEW: auto-run main() if defined
+        if "main" in local_env and callable(local_env["main"]):
+            try:
+                local_env["main"]()
+            except Exception:
+                return {"success": False, "output": traceback.format_exc()}
+
+        return {"success": True, "output": ""}
+
     except Exception:
         return {"success": False, "output": traceback.format_exc()}
+
