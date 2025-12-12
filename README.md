@@ -25,7 +25,7 @@ pytest
 ## State of this Project
 This code currently functions (see example below), but it is a work in progress. It iss currently optimized for data from the MEGATRON simulations. For more information see the file report.pdf. 
 
-## Example Usage (of Scheme 1)
+## Example Usage (of Langraph Scheme)
 ```python
 from hathor import Hathor
 
@@ -59,7 +59,7 @@ print(list(final_state['plot_ideas'].values())[0])
 print(final_state['generated_code'])
 ```
 
-## Example Usage (langchain)
+## Example Usage (of Langchain Scheme)
 ```python
 from src.pipeline.multi_agent_pipeline import MultiAgentPipeline
 
